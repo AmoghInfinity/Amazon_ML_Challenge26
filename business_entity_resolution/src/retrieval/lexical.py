@@ -69,7 +69,7 @@ class LexicalRetriever:
         self,
         queries_df: pd.DataFrame,
         top_k: Optional[int] = None,
-        batch_size: int = 500,
+        batch_size: int = 50,  # Lower batch size to prevent dense array OOM (50 * 10M = 2GB)
     ) -> Dict[str, List[Tuple[str, float]]]:
         """
         Retrieve top-k candidates for each query (S1 entity).
@@ -94,13 +94,15 @@ class LexicalRetriever:
             batch_names = query_names[start:end]
             batch_addrs = query_addrs[start:end]
             
-            # Transform query batch
-            name_q = self.name_vectorizer.transform(batch_names)
-            addr_q = self.addr_vectorizer.transform(batch_addrs)
+            # Transform query batch to dense and transpose (features x batch_size)
+            # This makes matrix mult extremely fast: CSR (10M x features) @ Dense (features x batch) -> Dense (10M x batch)
+            name_q = self.name_vectorizer.transform(batch_names).toarray().T
+            addr_q = self.addr_vectorizer.transform(batch_addrs).toarray().T
             
             # Compute similarities (name + address combined)
-            name_sim = name_q.dot(self.name_matrix.T)
-            addr_sim = addr_q.dot(self.addr_matrix.T)
+            # Resulting shape: (batch_size, 10M)
+            name_sim = self.name_matrix.dot(name_q).T
+            addr_sim = self.addr_matrix.dot(addr_q).T
             
             # Weighted fusion: name is more important for identity
             combined_sim = 0.6 * name_sim + 0.4 * addr_sim
@@ -108,8 +110,6 @@ class LexicalRetriever:
             # Extract top-k for each query
             for i, qid in enumerate(batch_ids):
                 row = combined_sim[i]
-                if sp.issparse(row):
-                    row = row.toarray().flatten()
                 
                 # Get top-k indices
                 if len(row) <= top_k:
