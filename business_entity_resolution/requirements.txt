@@ -1,0 +1,23 @@
+# Business Entity Resolution — Dependencies
+# Python 3.8+
+
+# Core ML
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# String matching
+rapidfuzz>=3.0.0
+
+# Gradient boosting
+lightgbm>=4.0.0
+
+# Embedding retrieval
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.0
+torch>=2.0.0
+
+# Optional: GPU support
+# faiss-gpu>=1.7.0
+# torch with CUDA (install via pytorch.org)
