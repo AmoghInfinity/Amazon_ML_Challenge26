@@ -63,17 +63,30 @@ def run_training_pipeline(
     t_start = time.time()
     
     s1 = load_source(TRAIN_S1)
-    if sample_size:
-        print(f"  [DEBUG] Sampling {sample_size} records from S1...")
-        s1 = s1.head(sample_size)
-        
     s2 = load_source(TRAIN_S2)
     s3 = load_source(TRAIN_S3)
     gt = load_ground_truth(TRAIN_GT)
     
     if sample_size:
+        print(f"  [DEBUG] Sampling {sample_size} records from S1...")
+        s1 = s1.head(sample_size)
         valid_ids = set(s1['entity_id'].values)
         gt = {k: v for k, v in gt.items() if k in valid_ids}
+        
+        # Collect all true match IDs for the sampled S1
+        true_match_ids = set()
+        for matches in gt.values():
+            true_match_ids.update(matches)
+            
+        # Sample S2 and S3: keep true matches + a random sample
+        s2_matches = s2[s2['entity_id'].isin(true_match_ids)]
+        s3_matches = s3[s3['entity_id'].isin(true_match_ids)]
+        
+        s2_random = s2[~s2['entity_id'].isin(true_match_ids)].head(sample_size * 2)
+        s3_random = s3[~s3['entity_id'].isin(true_match_ids)].head(sample_size * 2)
+        
+        s2 = pd.concat([s2_matches, s2_random], ignore_index=True)
+        s3 = pd.concat([s3_matches, s3_random], ignore_index=True)
     
     print(f"  S1: {len(s1):,}, S2: {len(s2):,}, S3: {len(s3):,}")
     print(f"  Ground truth: {len(gt):,} entities")
@@ -345,6 +358,11 @@ def run_inference_pipeline(
         
     t2 = load_source(TEST_S2)
     t3 = load_source(TEST_S3)
+    
+    if sample_size:
+        print(f"  [DEBUG] Sampling {sample_size*2} records from T2 and T3...")
+        t2 = t2.head(sample_size * 2)
+        t3 = t3.head(sample_size * 2)
     
     print(f"  Test S1: {len(t1):,}, S2: {len(t2):,}, S3: {len(t3):,}")
     
