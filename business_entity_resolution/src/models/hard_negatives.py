@@ -82,21 +82,63 @@ class HardNegativeMiner:
         
         print(f"    Retrieval hard negatives: {len(negatives):,}")
         
-        # === Type 2: Random negatives (easy, for calibration) ===
-        n_random_neg = n_neg_target - len(negatives)
+        # === Type 2: Explicit Collisions (Same-Name/Diff-Address, Same-Address/Diff-Name) ===
+        # Build inverted indices for exact collisions
+        name_index = defaultdict(list)
+        addr_index = defaultdict(list)
+        for cid, rec in candidate_records.items():
+            if rec.get('name_clean'):
+                name_index[rec['name_clean']].append(cid)
+            if rec.get('addr_clean'):
+                addr_index[rec['addr_clean']].append(cid)
+                
+        n_collision_neg = int(n_neg_target * 0.2)  # 20% from explicit collisions
+        collision_negs = []
+        
+        for s1_id, s1_rec in s1_records.items():
+            if len(collision_negs) >= n_collision_neg:
+                break
+            true_matches = gt_set.get(s1_id, set())
+            
+            # Same name, diff address
+            s1_name = s1_rec.get('name_clean')
+            if s1_name and s1_name in name_index:
+                for cid in name_index[s1_name]:
+                    if cid not in true_matches and (s1_id, cid) not in neg_set:
+                        collision_negs.append((s1_id, cid, 0))
+                        neg_set.add((s1_id, cid))
+                        if len(collision_negs) >= n_collision_neg: break
+            
+            # Same address, diff name
+            s1_addr = s1_rec.get('addr_clean')
+            if s1_addr and s1_addr in addr_index:
+                for cid in addr_index[s1_addr]:
+                    if cid not in true_matches and (s1_id, cid) not in neg_set:
+                        collision_negs.append((s1_id, cid, 0))
+                        neg_set.add((s1_id, cid))
+                        if len(collision_negs) >= n_collision_neg: break
+
+        negatives.extend(collision_negs)
+        print(f"    Explicit collision negatives: {len(collision_negs):,}")
+        
+        # === Type 3: Random negatives (easy, for calibration) ===
+        n_random_neg = max(0, n_neg_target - len(negatives))
         all_s1_ids = list(ground_truth.keys())
         all_cand_ids = list(candidate_records.keys())
         
         attempts = 0
-        while len(negatives) < n_neg_target and attempts < n_neg_target * 10:
+        random_negs = []
+        while len(random_negs) < n_random_neg and attempts < n_random_neg * 10:
             s1_id = random.choice(all_s1_ids)
             cand_id = random.choice(all_cand_ids)
             
             if (s1_id, cand_id) not in positive_set and (s1_id, cand_id) not in neg_set:
-                negatives.append((s1_id, cand_id, 0))
+                random_negs.append((s1_id, cand_id, 0))
                 neg_set.add((s1_id, cand_id))
             
             attempts += 1
+            
+        negatives.extend(random_negs)
         
         print(f"    Total negatives: {len(negatives):,}")
         

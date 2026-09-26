@@ -72,7 +72,6 @@ MODEL = {
         "verbose": -1,
         "n_jobs": -1,
         "is_unbalance": True,
-        "device_type": "gpu",
     },
     "early_stopping_rounds": 50,
 }

@@ -31,6 +31,7 @@ from models.pair_matcher import PairMatcher
 from models.hard_negatives import HardNegativeMiner
 from decision.entity_resolution import EntityDecisionLayer, compute_macro_f05
 from evaluation.metrics import evaluate_predictions, evaluate_blocking
+from evaluation.stress_test import run_stress_test
 
 
 def records_to_dict(df: pd.DataFrame) -> Dict[str, dict]:
@@ -43,6 +44,7 @@ def run_training_pipeline(
     val_fraction: float = 0.2,
     neg_ratio: float = 3.0,
     sample_size: Optional[int] = None,
+    stress_test: bool = False,
 ):
     """
     Full training pipeline:
@@ -116,6 +118,9 @@ def run_training_pipeline(
     
     print(f"  Train S1 records: {len(s1_train):,}")
     print(f"  Val S1 records:   {len(s1_val):,}")
+    
+    if stress_test:
+        s1_val = run_stress_test(s1_val)
     
     # === Step 4: Retrieval ===
     print("\n--- Step 4: Building retrieval indices ---")
@@ -508,6 +513,8 @@ def main():
                        help="Negative to positive ratio for training")
     parser.add_argument("--sample-size", type=int, default=None,
                        help="Number of S1 queries to sample (for quick testing)")
+    parser.add_argument("--stress-test", action="store_true",
+                       help="Corrupt the validation set to simulate unseen country noise")
     
     args = parser.parse_args()
     
@@ -519,6 +526,7 @@ def main():
             val_fraction=args.val_fraction,
             neg_ratio=args.neg_ratio,
             sample_size=args.sample_size,
+            stress_test=args.stress_test,
         )
         
         if args.mode == "full":
