@@ -1,79 +1,64 @@
 """
-Phase 2: Fine-Tuning the Dual-Encoder.
-Takes the ground truth and hard negatives mined in Phase 1, and fine-tunes
-the multilingual sentence transformer to push matches together and pull
-hard negatives apart in the embedding space.
+Phase 2: Fine-Tuning a Cross-Encoder Reranker.
+Trains a HuggingFace CrossEncoder on the hard-negative pairs to score
+pairs with extremely high precision. The output of this cross-encoder
+will be used as a dominant feature for the final LightGBM model.
 """
 import os
-import torch
 import random
+import pandas as pd
 from typing import List, Tuple, Dict
-from sentence_transformers import SentenceTransformer, InputExample, losses
 from torch.utils.data import DataLoader
+from sentence_transformers.cross_encoder import CrossEncoder
+from sentence_transformers.cross_encoder.evaluation import CEBinaryClassificationEvaluator
+from sentence_transformers import InputExample
 
-def fine_tune_dual_encoder(
+def fine_tune_cross_encoder(
     model_name: str,
     training_pairs: List[Tuple[str, str, int]],
     s1_records: Dict[str, dict],
     candidate_records: Dict[str, dict],
     output_path: str,
     epochs: int = 2,
-    batch_size: int = 32,
-    text_column: str = 'combined',
+    batch_size: int = 16,
 ):
-    """
-    Fine-tune SentenceTransformer on generated hard-negative pairs.
-    """
     print("=" * 70)
-    print(f"PHASE 2: FINE-TUNING DUAL ENCODER ({model_name})")
+    print(f"PHASE 2: FINE-TUNING CROSS ENCODER ({model_name})")
     print("=" * 70)
     
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"  [FineTune] Loading model on {device}...")
-    model = SentenceTransformer(model_name, device=device)
+    # We use num_labels=1 for binary classification (0 or 1)
+    model = CrossEncoder(model_name, num_labels=1)
     
-    # Create InputExamples
-    print(f"  [FineTune] Preparing {len(training_pairs):,} training pairs...")
+    print(f"  [CrossEncoder] Preparing {len(training_pairs):,} training pairs...")
     train_examples = []
     
     for s1_id, cand_id, label in training_pairs:
-        # Reconstruct the text
-        # Assumes the records have been normalized and 'combined' or similar exists,
-        # or we construct it on the fly.
         s1_rec = s1_records.get(s1_id, {})
         cand_rec = candidate_records.get(cand_id, {})
         
-        # Fallback formatting if text_column doesn't exist directly
-        t1 = s1_rec.get(text_column, f"{s1_rec.get('name_clean', '')} {s1_rec.get('addr_clean', '')}")
-        t2 = cand_rec.get(text_column, f"{cand_rec.get('name_clean', '')} {cand_rec.get('addr_clean', '')}")
+        t1 = f"{s1_rec.get('name_clean', '')} {s1_rec.get('addr_clean', '')}"
+        t2 = f"{cand_rec.get('name_clean', '')} {cand_rec.get('addr_clean', '')}"
         
-        # SentenceTransformers takes float labels for ContrastiveLoss
         train_examples.append(InputExample(texts=[t1, t2], label=float(label)))
         
     random.shuffle(train_examples)
     
-    # DataLoader
     train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=batch_size)
     
-    # Contrastive Loss pushes label=1 closer and label=0 further apart
-    train_loss = losses.ContrastiveLoss(model=model)
-    
-    print(f"  [FineTune] Starting training for {epochs} epochs...")
+    print(f"  [CrossEncoder] Starting training for {epochs} epochs...")
     model.fit(
-        train_objectives=[(train_dataloader, train_loss)],
+        train_dataloader=train_dataloader,
         epochs=epochs,
         warmup_steps=int(len(train_dataloader) * 0.1),
         show_progress_bar=True,
         output_path=output_path,
-        save_best_model=True
+        use_amp=True  # Automatic Mixed Precision for speed
     )
     
-    print(f"  [FineTune] Fine-tuning complete. Model saved to {output_path}")
-    return output_path
+    print(f"  [CrossEncoder] Fine-tuning complete. Model saved to {output_path}")
 
 if __name__ == "__main__":
     import argparse
-    import pandas as pd
     import sys
     
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -87,9 +72,9 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=2)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--sample-size", type=int, default=None)
-    parser.add_argument("--output", type=str, default="models/finetuned_dual_encoder")
+    parser.add_argument("--output", type=str, default="models/finetuned_cross_encoder")
     args = parser.parse_args()
     
     print("Loading data...")
@@ -109,19 +94,19 @@ if __name__ == "__main__":
     print("Generating hard negatives via lexical retrieval...")
     lexical = LexicalRetriever()
     lexical.fit(candidates)
-    lexical_results = lexical.retrieve(s1, top_k=50)
+    lexical_results = lexical.retrieve(s1, top_k=30)
     
     s1_records = {row['entity_id']: row.to_dict() for _, row in s1.iterrows()}
     cand_records = {row['entity_id']: row.to_dict() for _, row in candidates.iterrows()}
     
     miner = HardNegativeMiner()
     training_pairs = miner.generate_training_pairs(
-        s1_records, cand_records, gt, lexical_results, neg_ratio=5.0
+        s1_records, cand_records, gt, lexical_results, neg_ratio=3.0
     )
     
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    fine_tune_dual_encoder(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    fine_tune_cross_encoder(
+        model_name="cross-encoder/stsb-distilroberta-base",
         training_pairs=training_pairs,
         s1_records=s1_records,
         candidate_records=cand_records,

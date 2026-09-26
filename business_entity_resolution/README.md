@@ -1,122 +1,71 @@
 # Business Entity Resolution — Team Odyssey
 
-## Overview
+This repository contains the end-to-end Machine Learning pipeline for the Amazon ML Challenge 2026: Business Entity Resolution. 
 
-ML solution for resolving business entity identities across 3 independent, noisy data sources. Given business records with `business_name`, `business_address`, and `country`, determines which records across sources refer to the same real-world business.
+The pipeline uses a hybrid blocking approach (Lexical TF-IDF + Semantic FAISS) merged with Reciprocal Rank Fusion, feeding into a LightGBM pairwise precision model calibrated explicitly for the Macro-F0.5 metric.
 
-## Architecture
+## 📂 Project Structure
 
-```
-S1 / S2 / S3 records
-        │
-        ▼
-Universal normalization (names + addresses)
-        │
-   ┌────┼────────────┐
-   ▼    ▼             ▼
-TF-IDF   Token      Embedding
-(char   blocking    (multilingual
-n-gram)             MiniLM)
-   │       │             │
-   └───────┼─────────────┘
-           ▼
-   Reciprocal Rank Fusion + Adaptive-K cutoff
-           │  → candidate_pairs.tsv
-           ▼
-   Pairwise feature extraction (name/address/semantic/retrieval)
-           │
-           ▼
-   LightGBM matcher (hard-negative trained)
-           │
-           ▼
-   Entity-level decision layer
-   (singleton detection, macro-F0.5-calibrated thresholds, one-to-one)
-           │  → matching_results.tsv
-           ▼
+```text
+business_entity_resolution/
+├── src/
+│   ├── config.py                 # Global configurations & hyperparameters
+│   ├── pipeline.py               # Main execution entrypoint
+│   ├── data/                     # Data loading and saving utilities
+│   ├── normalization/            # Text standardization (names, addresses)
+│   ├── retrieval/                # Lexical and Embedding retrievers (Blocking)
+│   ├── features/                 # Jaro-Winkler, Levenshtein, N-gram extractors
+│   ├── decision/                 # Singleton detection and F0.5 calibrator
+│   ├── evaluation/               # F0.5 metrics and France-simulation stress tests
+│   └── models/
+│       ├── pair_matcher.py       # LightGBM pairwise model wrap
+│       ├── hard_negatives.py     # Explicit name/address collision mining
+│       ├── fine_tune_encoder.py  # Phase 2: Dual-Encoder training script
+│       └── fine_tune_cross_encoder.py # Phase 2: Cross-Encoder training script
+├── output/                       # Output TSVs generated here
+├── requirements.txt              # Pipeline dependencies (CPU/GPU)
+└── Documentation_template.md     # Official methodology write-up
 ```
 
-## Quick Start
+## 🚀 How to Reproduce
 
-### 1. Install dependencies
+### 1. Environment Setup
+Create a Python 3.11 virtual environment and install dependencies:
 ```bash
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Run the full pipeline (train + inference)
+### 2. Verify Data Path
+Ensure that the raw challenge dataset is located at:
+`C:\Users\LENOVO\Team_odyssey_Amazon\dataset`
+*(If your data is elsewhere, simply modify `DATA_DIR` in `src/config.py`).*
+
+### 3. Run the ML Pipeline (Baseline)
+The main pipeline executes both training and inference. To run the baseline pipeline across the full dataset:
 ```bash
 python src/pipeline.py --mode full
 ```
+This automatically:
+1. Performs lexical & dense semantic retrieval.
+2. Generates hard negative pairs.
+3. Extracts string similarity features.
+4. Trains the LightGBM model.
+5. Calibrates match/singleton thresholds against the Macro-F0.5 metric.
+6. Runs inference on the `test` split and generates `candidate_pairs.tsv` and `matching_results.tsv` in the `output/` directory.
 
-### 3. Run training only
+### 4. Phase 2 Fine-Tuning (Optional Overnight Run)
+For maximum precision, you can optionally fine-tune the deep learning models prior to running the main pipeline.
+1. Run the dual-encoder training: `python src/models/fine_tune_encoder.py --epochs 3`
+2. Run the cross-encoder training: `python src/models/fine_tune_cross_encoder.py --epochs 2`
+3. Update `config.py` to point to the newly saved models, then run `python src/pipeline.py --mode full`.
+
+### 5. Validate the Submission Format
+You can verify the pipeline output complies with challenge rules using the official validator:
 ```bash
-python src/pipeline.py --mode train
+python ../6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
+  --matching output/matching_results.tsv \
+  --candidate output/candidate_pairs.tsv \
+  --test-dir ../dataset/test
 ```
-
-### 4. Run inference only (requires saved model)
-```bash
-python src/pipeline.py --mode inference
-```
-
-### 5. Fast mode (no embeddings, lexical-only)
-```bash
-python src/pipeline.py --mode full --no-embeddings
-```
-
-### 6. Validate output
-```bash
-python ../utils/validate_submission.py \
-    --matching output/matching_results.tsv \
-    --candidate output/candidate_pairs.tsv \
-    --test-dir ../dataset/test
-```
-
-## Project Structure
-
-```
-business_entity_resolution/
-├── src/
-│   ├── config.py                  # Central configuration
-│   ├── pipeline.py                # Main pipeline orchestrator
-│   ├── phase0_analysis.py         # Phase 0 data analysis
-│   ├── data/
-│   │   ├── loader.py              # Data I/O, validation splits
-│   │   └── __init__.py
-│   ├── normalization/
-│   │   ├── names.py               # Business name normalization
-│   │   ├── addresses.py           # Address normalization
-│   │   ├── pipeline.py            # Normalization pipeline
-│   │   └── __init__.py
-│   ├── retrieval/
-│   │   ├── lexical.py             # TF-IDF char n-gram retrieval
-│   │   ├── embeddings.py          # Sentence-transformer + FAISS
-│   │   ├── fusion.py              # RRF fusion + adaptive-K
-│   │   └── __init__.py
-│   ├── features/
-│   │   ├── pairwise.py            # Pairwise feature extraction
-│   │   └── __init__.py
-│   ├── models/
-│   │   ├── pair_matcher.py        # LightGBM matcher
-│   │   ├── hard_negatives.py      # Hard negative mining
-│   │   └── __init__.py
-│   ├── decision/
-│   │   ├── entity_resolution.py   # Decision layer + calibration
-│   │   └── __init__.py
-│   └── evaluation/
-│       ├── metrics.py             # F0.5, blocking metrics
-│       └── __init__.py
-├── output/
-│   ├── matching_results.tsv       # Final matches
-│   └── candidate_pairs.tsv        # Blocking candidates
-├── models/                        # Saved model artifacts
-├── requirements.txt
-└── README.md
-```
-
-## Key Design Decisions
-
-1. **Adaptive-K cutoff** instead of fixed top-N — preserves recall for multi-match entities
-2. **Country as weak signal only** — `country_match` flag, no one-hot encoding, no hardcoded country logic
-3. **One-to-one constraint** — validated empirically from ground truth (each S2/S3 maps to ≤1 S1)
-4. **Hard negative mining** — retrieval-surfaced non-matches are the hardest, most informative negatives
-5. **Macro-F0.5 calibration** — thresholds tuned on the actual evaluation metric, not pairwise accuracy
-6. **Singleton detection** — dedicated mechanism since singletons are 5.6% of entities but scored at full weight
