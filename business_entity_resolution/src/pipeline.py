@@ -40,6 +40,7 @@ def run_training_pipeline(
     use_embeddings: bool = True,
     val_fraction: float = 0.2,
     neg_ratio: float = 3.0,
+    sample_size: Optional[int] = None,
 ):
     """
     Full training pipeline:
@@ -60,9 +61,17 @@ def run_training_pipeline(
     t_start = time.time()
     
     s1 = load_source(TRAIN_S1)
+    if sample_size:
+        print(f"  [DEBUG] Sampling {sample_size} records from S1...")
+        s1 = s1.head(sample_size)
+        
     s2 = load_source(TRAIN_S2)
     s3 = load_source(TRAIN_S3)
     gt = load_ground_truth(TRAIN_GT)
+    
+    if sample_size:
+        valid_ids = set(s1['entity_id'].values)
+        gt = {k: v for k, v in gt.items() if k in valid_ids}
     
     print(f"  S1: {len(s1):,}, S2: {len(s2):,}, S3: {len(s3):,}")
     print(f"  Ground truth: {len(gt):,} entities")
@@ -316,6 +325,7 @@ def run_inference_pipeline(
     decision: EntityDecisionLayer,
     lexical_retriever: Optional[LexicalRetriever] = None,
     use_embeddings: bool = True,
+    sample_size: Optional[int] = None,
 ):
     """
     Run inference on test data and generate output files.
@@ -327,6 +337,10 @@ def run_inference_pipeline(
     # Load test data
     print("\n--- Loading test data ---")
     t1 = load_source(TEST_S1)
+    if sample_size:
+        print(f"  [DEBUG] Sampling {sample_size} records from T1...")
+        t1 = t1.head(sample_size)
+        
     t2 = load_source(TEST_S2)
     t3 = load_source(TEST_S3)
     
@@ -472,6 +486,8 @@ def main():
                        help="Validation split fraction")
     parser.add_argument("--neg-ratio", type=float, default=3.0,
                        help="Negative to positive ratio for training")
+    parser.add_argument("--sample-size", type=int, default=None,
+                       help="Number of S1 queries to sample (for quick testing)")
     
     args = parser.parse_args()
     
@@ -482,6 +498,7 @@ def main():
             use_embeddings=use_embeddings,
             val_fraction=args.val_fraction,
             neg_ratio=args.neg_ratio,
+            sample_size=args.sample_size,
         )
         
         if args.mode == "full":
@@ -489,6 +506,7 @@ def main():
                 matcher=results['matcher'],
                 decision=results['decision'],
                 use_embeddings=use_embeddings,
+                sample_size=args.sample_size,
             )
     
     elif args.mode == "inference":
@@ -506,6 +524,7 @@ def main():
             matcher=matcher,
             decision=decision,
             use_embeddings=use_embeddings,
+            sample_size=args.sample_size,
         )
     
     print("\n" + "=" * 70)

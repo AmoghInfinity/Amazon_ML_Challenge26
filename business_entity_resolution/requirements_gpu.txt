@@ -1,0 +1,24 @@
+pandas==2.2.0
+numpy==1.26.4
+scikit-learn==1.4.0
+scipy==1.12.0
+tqdm==4.66.2
+joblib==1.3.2
+
+# LightGBM (GPU version usually needs specific build arguments or compiled wheels, 
+# but installing standard LightGBM will fall back to CPU. To use GPU on Windows, 
+# it requires OpenCL/CUDA compilation. For now we install the standard wheel.)
+lightgbm==4.3.0
+
+# PyTorch with CUDA 12.1 support (Downgraded to 2.3.1 to avoid fbgemm.dll Windows bug in 2.4.x)
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.3.1+cu121
+
+# Sentence Transformers (for semantic embeddings)
+sentence-transformers==3.0.1
+transformers==4.40.1
+
+# FAISS (GPU version for Windows is only via conda natively, 
+# but we can use CPU faiss-cpu or compile from source. 
+# We'll use faiss-cpu which is still very fast for 10M records)
+faiss-cpu==1.8.0
