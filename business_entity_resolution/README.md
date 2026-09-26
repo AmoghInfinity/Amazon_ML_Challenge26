@@ -64,10 +64,10 @@ python src/pipeline.py --mode full --no-embeddings
 
 ### 6. Validate output
 ```bash
-python ../6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
+python ../utils/validate_submission.py \
     --matching output/matching_results.tsv \
     --candidate output/candidate_pairs.tsv \
-    --test-dir ../6ab10eb3b23ba_student_resource/student_resource/dataset/test
+    --test-dir ../dataset/test
 ```
 
 ## Project Structure

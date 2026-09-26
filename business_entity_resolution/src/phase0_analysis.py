@@ -7,9 +7,11 @@ import pandas as pd
 import sys
 from collections import Counter
 
-DATA_DIR = r"c:\Users\LENOVO\Team_odyssey_Amazon\6ab10eb3b23ba_student_resource\student_resource\dataset"
+DATA_DIR = r"c:\Users\LENOVO\Team_odyssey_Amazon\dataset"
 
 def main():
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding='utf-8')
     print("=" * 70)
     print("PHASE 0: DATA ANALYSIS")
     print("=" * 70)
