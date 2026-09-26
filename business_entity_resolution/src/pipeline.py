@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
